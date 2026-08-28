@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Tokens lifted from the Figma export (Desktop - 2).
+   The design is drawn on a 1440px artboard over 27.18px graph paper.
+--------------------------------------------------------------------------- */
+@theme {
+  /* Named breakpoints so the variants sort correctly against md/lg.
+     `wide` is the width at which the story frame can hold the full Figma
+     composition (~980px of track plus the 70px rail). They must be declared
+     in rem: Tailwind emits px-valued breakpoints ahead of its rem-valued
+     defaults, which would let `md:` win over `wide:` on a wide screen. */
+  --breakpoint-wide: 72.5rem; /* 1160px */
+  --breakpoint-full: 87.5rem; /* 1400px */
+
+  --color-ink: #000000;
+  --color-paper: #ffffff;
+  --color-band: #d9d9d9;
+  --color-bubble: #d9d9d9;
+  --color-story: #f1eee9;
+}
+
+/* Font stacks are plain CSS rather than @theme entries: Tailwind tree-shakes
+   theme variables that no utility references, and next/font injects its own
+   --f-* variables on <html>. Keeping them here makes the wiring explicit. */
+:root {
+  --app-sans: var(--f-inter), ui-sans-serif, system-ui, sans-serif;
+  --app-serif: var(--f-frank), Georgia, "Times New Roman", serif;
+  --app-inika: var(--f-inika), Georgia, serif;
+  --app-outfit: var(--f-outfit), ui-sans-serif, system-ui, sans-serif;
+
+  /* one graph-paper cell */
+  --cell: 27.18px;
+  --rule: rgba(0, 0, 0, 0.13);
+}
+
+.font-body {
+  font-family: var(--app-sans);
+}
+.font-display {
+  font-family: var(--app-serif);
+}
+.font-inika {
+  font-family: var(--app-inika);
+}
+.font-outfit {
+  font-family: var(--app-outfit);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--color-ink);
+  font-family: var(--app-sans);
+  -webkit-font-smoothing: antialiased;
+
+  /* The graph paper. Two 1px hairline gradients tiled at one cell; painted on
+     the body so it extends the full document height and scrolls with it. */
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(to right, var(--rule) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+  background-position: center top;
+}
+
+/* Outlined "sticker" surface — the nav bar, the pill buttons, the glossary
+   cards and the story frame all share this treatment in the design. */
+.sticker {
+  background: var(--color-paper);
+  border: 1.5px solid var(--color-ink);
+}
+
+/* Glossary cards are drawn at 1px in the design, everything else at 1.5px. */
+.sticker-thin {
+  border-width: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+   Speech bubble. Written as plain CSS rather than arbitrary Tailwind values:
+   the tail needs calc() offsets, and `top-[calc(100%-40px)]` compiles to
+   invalid CSS (calc needs spaces around the minus), so it is silently dropped.
+
+   Rectangle 31 in Figma is 309 x 85 with border-radius 100px — on an 85px box
+   that clamps to 42.4px, i.e. a full pill. Text inside is 215px wide.
+--------------------------------------------------------------------------- */
+.bubble {
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 24px;
+  border-radius: 100px;
+  background: var(--color-bubble);
+}
+
+/* Polygon 1: a 27 x 92.4 triangle rotated -149.3deg — a long, thin sliver
+   whose base is tucked inside the pill so only the taper shows. */
+.bubble-tail {
+  position: absolute;
+  width: 39px;
+  height: 50px;
+  top: calc(100% - 24px);
+  left: -22px;
+}
+.bubble-tail--right {
+  left: auto;
+  right: -22px;
+  transform: scaleX(-1);
+}
+
+@media (min-width: 48rem) {
+  .bubble {
+    min-height: 70px;
+    padding: 12px 36px;
+  }
+  .bubble-tail {
+    width: 50px;
+    height: 65px;
+    top: calc(100% - 31px);
+    left: -28px;
+  }
+  .bubble-tail--right {
+    left: auto;
+    right: -28px;
+  }
+}
+
+@media (min-width: 72.5rem) {
+  .bubble {
+    min-height: 85px;
+    padding: 12px 52px;
+  }
+  .bubble-tail {
+    width: 64px;
+    height: 83px;
+    top: calc(100% - 40px);
+    left: -36px;
+  }
+  .bubble-tail--right {
+    left: auto;
+    right: -36px;
+  }
+}
+
+/* Dialogue in the story frame is capitalised in Figma via text-transform. */
+.dialogue {
+  text-transform: capitalize;
+}
+
+/* Hide the story frame's native scrollbar without losing the scroll. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
