@@ -4,3 +4,7 @@ out
 next-env.d.ts
 *.tsbuildinfo
 .DS_Store
+
+# Claude Code local config (vendored design skills, ~11MB)
+.claude/
+.mcp.json

@@ -1,32 +1,49 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type React from "react";
 import {
+  BenchArt,
+  BufferWellArt,
+  CellDotArt,
+  CentrifugeArt,
   ColonyArt,
+  ColumnArt,
+  DishArt,
   EcoliArt,
   FlaskArt,
   GeneArt,
+  HostCellArt,
   IptgArt,
+  LysateArt,
   NewRingArt,
+  PelletArt,
   PlasmidArt,
+  ProteinArt,
   ScissorsArt,
+  TubeRackArt,
   VirusArt,
   YeastArt,
 } from "./art";
+import type { ColumnPhase } from "./art";
 
 /* ---------------------------------------------------------------------------
- * The whole walkthrough lives in one card and never navigates: every step swaps
- * the card's contents in place.
+ * The whole walkthrough lives in one card and never navigates: every step
+ * swaps the card's contents in place.
  *
  * Geometry is in design pixels on the 1013px content column. Everything on the
  * stage is placed with the `POS` helper, which only takes effect at the `wide:`
- * breakpoint — below that the same nodes fall back to flow layout so the art and
- * captions stay legible on a phone.
+ * breakpoint — below that the same nodes fall back to flow layout so the art
+ * and captions stay legible on a phone.
  *
  * The header block (title, blurb, Vera, her speech pill) is identical in every
- * step and 387px tall; only the beige stage below it changes height.
+ * step and 387px tall; only the lit stage below it changes height.
+ *
+ * The stage is a lit bench with real depth: `perspective` lives on the panel
+ * and the props move on the Z axis, so lifting one brings it toward the viewer
+ * rather than merely scaling it. All of that is in `globals.css` under
+ * `.sim-stage`, and one `prefers-reduced-motion` block turns the motion off.
  * ------------------------------------------------------------------------ */
 
 type StepId =
@@ -40,6 +57,21 @@ type StepId =
   | "iptg"
   | "lyse"
   | "purify";
+
+/** Screen order — used by the progress rail, which reports where you are and
+ *  changes nothing about the walkthrough itself. */
+const STEP_ORDER: StepId[] = [
+  "pick",
+  "pop",
+  "rescue",
+  "cut",
+  "cell",
+  "winners",
+  "grow",
+  "iptg",
+  "lyse",
+  "purify",
+];
 
 /** Which drop zone each draggable currently sits in. */
 type Placement = Record<string, string>;
@@ -86,7 +118,7 @@ const STEPS: Record<StepId, Step> = {
     blurb: OPEN_BLURB,
     blurbW: 1013,
     line: "Then drag the little DNA ring into the clean tube before it gets lost!",
-    stageH: 307,
+    stageH: 360,
   },
   cut: {
     n: "3.",
@@ -103,7 +135,7 @@ const STEPS: Record<StepId, Step> = {
     blurb: "Time to put our new DNA ring inside a fresh bacteria cell.",
     blurbW: 626,
     line: "Drag the new DNA ring onto the cell. Then press HEAT SHOCK — a quick blast of warmth opens the door for it to get in!",
-    stageH: 294,
+    stageH: 460,
   },
   winners: {
     n: "6.",
@@ -112,7 +144,7 @@ const STEPS: Record<StepId, Step> = {
       "Only cells that got our DNA ring can survive on this special dish. Let's test both groups and see.",
     blurbW: 1033,
     line: "Drag both groups onto the dish, then press INCUBATE. Let's see who is still alive tomorrow!",
-    stageH: 383,
+    stageH: 460,
   },
   grow: {
     n: "7.",
@@ -130,7 +162,7 @@ const STEPS: Record<StepId, Step> = {
     blurbW: 878,
     // The export repeats the blurb inside the pill, and the mock-up confirms it.
     line: "Our gene is asleep until we wake it up with a special helper chemical called IPTG.",
-    stageH: 383,
+    stageH: 470,
   },
   lyse: {
     n: "9.",
@@ -149,7 +181,7 @@ const STEPS: Record<StepId, Step> = {
       "Our protein has a special tag that sticks to this column. Let's wash away everything else and keep only our protein.",
     blurbW: 1247,
     line: "Drag the liquid onto the column. Press WASH to rinse away the junk, then press COLLECT to get your clean protein!",
-    stageH: 383,
+    stageH: 470,
   },
 };
 
@@ -239,29 +271,49 @@ const SCISSOR_REST: Record<string, [number, number]> = {
 /** Scissors sit in a 60px box, so they drop straight onto a 60px site. */
 const onSite = (zone: string): [number, number] => CUT_SITES[zone];
 
-/** Step 6 — the blobs start either side of the dish and move into it. */
+/* Step 6 — the two groups queue up below the dish and are dragged up onto the
+ * agar, one under the other rather than flanking the plate. */
 const BLOB_REST: Record<string, [number, number]> = {
-  "group-with": [152.5, 65.5],
-  "group-without": [775.5, 65.5],
+  "group-with": [464, 236],
+  "group-without": [464, 344],
 };
+/** Where a group lands when it is placed by click or keyboard, which carries
+ *  no drop point of its own: half the plate each. */
 const BLOB_SLOT: Record<string, [number, number]> = {
   "group-with": [417, 65.5],
   "group-without": [511, 65.5],
 };
 const LABEL_REST: Record<string, [number, number]> = {
-  "group-with": [121, 160],
-  "group-without": [760.5, 160],
+  "group-with": [560, 268],
+  "group-without": [560, 376],
 };
 const LABEL_SLOT: Record<string, [number, number]> = {
   "group-with": [356, 216],
   "group-without": [532.5, 216],
 };
 
-/* The seven colonies that come up overnight (Ellipses 34-40, 20px #FFAB03).
- * Centres relative to the dish's 200px box, scattered across the plate rather
- * than sitting on the group that seeded them — traced off the supplied
- * artwork, which keeps them clear of the green blob and lets a couple land
- * over the faded one. Irregular on purpose. */
+/* The dish, for keeping a dropped group on the agar. */
+const BLOB = 85;
+const DISH: { cx: number; cy: number; r: number } = { cx: 506.5, cy: 108, r: 100 };
+/**
+ * Nudge a group so the whole 85px blob lands inside the plate. Anywhere on the
+ * agar is a legitimate place to streak it, so this only pulls back the ones
+ * that would hang over the rim.
+ */
+function onAgar(x: number, y: number): [number, number] {
+  const vx = x + BLOB / 2 - DISH.cx;
+  const vy = y + BLOB / 2 - DISH.cy;
+  const d = Math.hypot(vx, vy);
+  const max = DISH.r - BLOB / 2;
+  if (d <= max || d === 0) return [x, y];
+  const k = max / d;
+  return [DISH.cx + vx * k - BLOB / 2, DISH.cy + vy * k - BLOB / 2];
+}
+
+/* The seven colonies that come up overnight. Centres relative to the dish's
+ * 200px box, scattered across the plate rather than sitting on the group that
+ * seeded them — traced off the supplied artwork, which keeps them clear of the
+ * green blob and lets a couple land over the faded one. Irregular on purpose. */
 const DISH_COLONIES: [number, number][] = [
   [128, 32],
   [163, 72],
@@ -272,26 +324,32 @@ const DISH_COLONIES: [number, number][] = [
   [110, 178],
 ];
 
-/** Absolutely positioned inside the dish, so they scatter over the plate. */
+/** Absolutely positioned inside the dish, so they scatter over the plate, and
+ *  staggered so the plate visibly comes up rather than snapping on. */
 function DishColonies() {
   return (
     <>
-      {DISH_COLONIES.map(([x, y]) => (
+      {DISH_COLONIES.map(([x, y], i) => (
         <span
           key={`${x}-${y}`}
           data-colony
-          // less the dish's 3px border: children sit against the padding box
-          style={{ left: x - 10 - 3, top: y - 10 - 3 }}
-          className="absolute block size-[20px] rounded-full bg-[#FFAB03]"
-        />
+          style={{
+            left: x - 11,
+            top: y - 11,
+            animationDelay: `${i * 90}ms`,
+          }}
+          className="sim-grow-in absolute block size-[22px] rounded-full"
+        >
+          <span className="block size-full rounded-full bg-[radial-gradient(circle_at_34%_30%,#FFF3C4_0%,#FFAB03_52%,#9C5A00_100%)] shadow-[0_0_10px_rgba(255,171,3,0.65)]" />
+        </span>
       ))}
     </>
   );
 }
 
 /* --- speech bubble -------------------------------------------------------
- * Rectangle 31 is a 490 x 64 pill in #545050; Polygon 1 is the sliver that
- * points back at Vera, 48px left of the pill and 23px down from its top.
+ * Rectangle 31 is a 490 x 64 pill; Polygon 1 is the sliver that points back at
+ * Vera, 48px left of the pill and 23px down from its top.
  */
 function VeraBubble({ line, pillH = 64 }: { line: string; pillH?: number }) {
   return (
@@ -306,7 +364,7 @@ function VeraBubble({ line, pillH = 64 }: { line: string; pillH?: number }) {
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        <polygon points="1.485,16.165 93.4,0 96.37,26.728" fill="#545050" />
+        <polygon points="1.485,16.165 93.4,0 96.37,26.728" fill="#2b3740" />
       </svg>
       <p className="vera-pill relative min-h-[56px] rounded-[22px] px-4 py-3 text-[13px] leading-[17px] sm:rounded-[100px] sm:px-5 sm:text-[15px] sm:leading-[18px] wide:h-full wide:min-h-0 wide:py-0 wide:pr-[18px] wide:pl-[21px]">
         {line}
@@ -334,8 +392,8 @@ function Caption({
 }) {
   return (
     <span
-      className="font-outfit absolute text-center text-[16px] leading-[20px] whitespace-nowrap"
-      style={{ left, top, width, color: color ?? "var(--color-ink)" }}
+      className="font-outfit absolute text-center text-[16px] leading-[20px] whitespace-nowrap [text-shadow:0_2px_8px_rgba(0,0,0,0.65)]"
+      style={{ left, top, width, color: color ?? "var(--sim-fg)" }}
     >
       {children}
     </span>
@@ -363,8 +421,8 @@ function StageLabel({
 }) {
   return (
     <span
-      style={{ ...at(x, y), width, color }}
-      className={`block text-center whitespace-nowrap ${POS} ${
+      style={{ ...at(x, y), width, color: color ?? "var(--sim-fg)" }}
+      className={`block text-center whitespace-nowrap [text-shadow:0_2px_8px_rgba(0,0,0,0.6)] ${POS} ${
         font === "inter"
           ? "text-[15px] leading-[18px]"
           : "font-outfit text-[16px] leading-[20px]"
@@ -372,6 +430,33 @@ function StageLabel({
     >
       {children}
     </span>
+  );
+}
+
+/** The green line a step prints when it has gone right. */
+function GoodNews({
+  children,
+  x,
+  y,
+  width,
+  className = "",
+}: {
+  children: React.ReactNode;
+  x: number;
+  y: number;
+  width: number;
+  className?: string;
+}) {
+  return (
+    <StageLabel
+      x={x}
+      y={y}
+      width={width}
+      color="#7BF3A5"
+      className={`sim-enter ${className}`}
+    >
+      {children}
+    </StageLabel>
   );
 }
 
@@ -395,6 +480,52 @@ interface DragApi {
   up: (e: React.PointerEvent<HTMLElement>, id: string) => void;
   cancel: (e: React.PointerEvent<HTMLElement>, id: string) => void;
   click: (id: string) => void;
+  /** Ids that were placed on this render and must land without animating. */
+  settling: Record<string, boolean>;
+}
+
+/* `useLayoutEffect` warns when React renders on the server, and this component
+   is prerendered. The effect below only ever has work to do after a pointer
+   interaction, so falling back to `useEffect` there costs nothing. */
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * A dropped prop must land where it was dropped, with no rubber-band.
+ *
+ * While a prop is dragged it sits at its old `left`/`top` with a transform
+ * carrying the pointer delta. On the render that places it, `left`/`top` jump
+ * to the target and React clears that transform — but `.sim-prop` transitions
+ * `transform`, so the browser animates the delta back out over a quarter of a
+ * second. The eye reads that as the prop snapping home and then crawling to
+ * the target.
+ *
+ * So on the placing render only, clear the transform with transitions off and
+ * flush it, then hand styling back to the stylesheet. The prop is simply at
+ * its destination on the very next frame.
+ *
+ * This deliberately does no measuring. An earlier attempt animated a measured
+ * first/last delta; the "first" rect it captured was the prop's untransformed
+ * position, so it inverted the wrong offset and drove exactly the snap-back it
+ * was meant to remove.
+ */
+function useSettleInPlace(
+  id: string,
+  api: DragApi,
+  ref: React.RefObject<HTMLButtonElement | null>,
+) {
+  useIsoLayoutEffect(() => {
+    if (!api.settling[id]) return;
+    delete api.settling[id];
+    const el = ref.current;
+    if (!el) return;
+    const prevTransition = el.style.transition;
+    el.style.transition = "none";
+    el.style.transform = "none";
+    void el.offsetWidth; // commit the jump before transitions come back
+    el.style.transition = prevTransition;
+    el.style.transform = "";
+  });
 }
 
 function Draggable({
@@ -423,9 +554,12 @@ function Draggable({
 }) {
   const dragging = api.drag?.id === id;
   const armed = api.armed === id;
+  const nodeRef = useRef<HTMLButtonElement | null>(null);
+  useSettleInPlace(id, api, nodeRef);
 
   return (
     <button
+      ref={nodeRef}
       type="button"
       aria-label={label}
       aria-pressed={armed}
@@ -439,55 +573,46 @@ function Draggable({
         ...at(x, y),
         width,
         height,
+        // The Z translate is what makes a lifted prop come off the bench:
+        // the stage sets `perspective`, so this is real depth, not a scale.
         transform: dragging
-          ? `translate3d(${api.drag!.dx}px, ${api.drag!.dy}px, 0)`
+          ? `translate3d(${api.drag!.dx}px, ${api.drag!.dy}px, 70px)`
           : undefined,
       }}
-      className={`grabbable relative block shrink-0 rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${POS} ${
+      className={`grabbable sim-prop relative block shrink-0 rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--sim-cyan)] ${POS} ${
         dragging
-          ? "z-30 cursor-grabbing"
-          : `transition-[transform,left,top] duration-300 ease-out ${settled ? "cursor-default" : "cursor-grab"}`
-      } ${
-        armed ? "outline-2 outline-offset-4 outline-dashed outline-ink" : ""
-      } ${className}`}
+          ? "sim-prop--lifted z-30 cursor-grabbing !transition-none"
+          : `transition-[transform,left,top,filter] duration-300 ease-out ${
+              settled ? "sim-prop--settled cursor-default" : "cursor-grab"
+            }`
+      } ${armed ? "sim-prop--armed" : ""} ${className}`}
     >
       {children}
     </button>
   );
 }
 
-/* A dashed drop target. Turns red and reads "error" when something the step
- * does not want lands on it. */
-/* Exactly one width class and one colour class is ever applied, because two
-   competing `border-*` utilities have no defined order in the stylesheet. */
-const ZONE_WIDTH = { 2: "border-[2px]", 3: "border-[3px]" } as const;
-const ZONE_TONE = {
-  ink: "border-ink",
-  blue: "border-[#0FB6FE]",
-  sky: "border-[#0995D1]",
-} as const;
-/* Rectangle 50 is stroked solid; the flask in steps 7-8 is its own target and
-   wants no outline at all. */
-const ZONE_EDGE = {
-  dashed: "border-dashed",
-  solid: "border-solid",
-  none: "border-0",
-} as const;
-
+/* --- drop targets --------------------------------------------------------
+ * A zone is a socket recessed into the bench. `art` is the equipment that
+ * lives in it (a centrifuge, a rack, a dish); `label` is the centred word a
+ * bare socket shows; `chip` is the small caption a socket with art carries
+ * along its bottom edge.
+ */
 function DropZone({
   id,
   register,
   label,
+  chip,
+  art,
   ariaLabel,
   width,
   height,
   x,
   y,
   shape = "rect",
-  stroke = 3,
-  tone = "ink",
-  edge = "dashed",
-  labelTone = "ink",
+  bare = false,
+  tiny = false,
+  open = false,
   wrong,
   hot,
   disabled,
@@ -498,17 +623,20 @@ function DropZone({
   id: string;
   register: (id: string) => (el: HTMLButtonElement | null) => void;
   label?: string;
+  chip?: string;
+  art?: React.ReactNode;
   ariaLabel: string;
   width: number;
   height: number;
   x: number;
   y: number;
   shape?: "rect" | "circle";
-  stroke?: keyof typeof ZONE_WIDTH;
-  tone?: keyof typeof ZONE_TONE;
-  edge?: keyof typeof ZONE_EDGE;
-  /** "blue" is the small label that sits inside a cut site. */
-  labelTone?: "ink" | "blue";
+  /** The equipment is the target — no socket rim around it. */
+  bare?: boolean;
+  /** The small blue label a cut site carries. */
+  tiny?: boolean;
+  /** Pulse the rim: this is where the next thing goes. */
+  open?: boolean;
   wrong: boolean;
   hot: boolean;
   disabled: boolean;
@@ -516,18 +644,6 @@ function DropZone({
   className?: string;
   children?: React.ReactNode;
 }) {
-  const paint = wrong
-    ? "border-danger bg-danger/10 text-danger"
-    : hot
-      ? `${ZONE_TONE[tone]} bg-ink/[0.06] text-ink`
-      : `${ZONE_TONE[tone]} text-ink`;
-  // An outline-less zone must not also emit a width class — two competing
-  // border-width utilities have no defined order in the stylesheet.
-  const rim =
-    edge === "none"
-      ? ZONE_EDGE.none
-      : `${ZONE_EDGE[edge]} ${ZONE_WIDTH[stroke]}`;
-
   return (
     <button
       ref={register(id)}
@@ -537,23 +653,82 @@ function DropZone({
       disabled={disabled}
       onClick={onClick}
       style={{ ...at(x, y), width, height }}
-      className={`grid shrink-0 place-items-center transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${POS} ${rim} ${
-        shape === "circle" ? "rounded-full" : ""
-      } ${paint} ${className}`}
+      className={`sim-zone relative grid shrink-0 place-items-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--sim-cyan)] ${POS} ${
+        shape === "circle" ? "sim-zone--circle" : ""
+      } ${bare ? "sim-zone--bare" : ""} ${hot ? "sim-zone--hot" : ""} ${
+        wrong ? "sim-zone--wrong" : ""
+      } ${open && !hot && !wrong ? "sim-zone--open" : ""} ${className}`}
     >
-      {children}
+      {art && (
+        <span className="pointer-events-none absolute inset-0 block">{art}</span>
+      )}
+
+      {children && <span className="relative block">{children}</span>}
+
       {label && !children && (
         <span
-          className={`font-outfit text-center ${
-            labelTone === "blue"
-              ? "text-[16px] leading-[20px] text-[#0FB6FE]"
+          className={`sim-zone-label relative text-center ${
+            tiny
+              ? "text-[16px] leading-[20px] text-[var(--sim-cyan)]"
               : "text-[20px] leading-[27px] wide:text-[25px] wide:leading-[32px]"
           }`}
         >
           {wrong ? "error" : label}
         </span>
       )}
+
+      {chip && !children && (
+        <span className="sim-zone-chip">{wrong ? "error" : chip}</span>
+      )}
     </button>
+  );
+}
+
+/** The reticle drawn inside a cut site, so it reads as somewhere to aim. */
+function SiteReticle() {
+  return (
+    <svg
+      viewBox="0 0 60 60"
+      className="h-full w-full"
+      aria-hidden="true"
+    >
+      <circle
+        cx="30"
+        cy="30"
+        r="25"
+        fill="none"
+        stroke="#38E1FF"
+        strokeWidth="1.4"
+        strokeDasharray="4 5"
+        opacity="0.75"
+      />
+      <circle
+        cx="30"
+        cy="30"
+        r="13"
+        fill="rgba(56,225,255,0.1)"
+        stroke="#38E1FF"
+        strokeWidth="1"
+        opacity="0.6"
+      />
+      {[
+        [30, 2, 30, 12],
+        [30, 48, 30, 58],
+        [2, 30, 12, 30],
+        [48, 30, 58, 30],
+      ].map(([x1, y1, x2, y2]) => (
+        <line
+          key={`${x1}-${y1}`}
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke="#38E1FF"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      ))}
+    </svg>
   );
 }
 
@@ -579,7 +754,10 @@ function ScissorsProp({
       api={api}
       settled={!!seat}
     >
-      <ScissorsArt className="absolute top-[4.5px] left-[0.5px] h-[51px] w-[59px]" />
+      <ScissorsArt
+        closed={!!seat}
+        className="absolute top-[4.5px] left-[0.5px] h-[51px] w-[59px]"
+      />
     </Draggable>
   );
 }
@@ -591,6 +769,8 @@ function ActionButton({
   width,
   height,
   color,
+  edge,
+  glow,
   fontSize,
   onClick,
   children,
@@ -600,6 +780,10 @@ function ActionButton({
   width: number;
   height: number;
   color: string;
+  /** The 3px lip under the button — a darker shade of its own colour. */
+  edge: string;
+  /** The bloom it throws onto the bench. */
+  glow: string;
   fontSize: number;
   onClick: () => void;
   children: React.ReactNode;
@@ -608,15 +792,25 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      style={{ ...at(x, y), width, height, background: color, fontSize }}
-      className={`font-outfit grid shrink-0 place-items-center rounded-[50px] leading-[32px] text-white transition-transform duration-150 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink active:scale-95 ${POS}`}
+      style={
+        {
+          ...at(x, y),
+          width,
+          height,
+          backgroundColor: color,
+          fontSize,
+          "--sim-btn-edge": edge,
+          "--sim-btn-glow": glow,
+        } as React.CSSProperties
+      }
+      className={`sim-button sim-enter grid shrink-0 place-items-center px-2 text-center leading-[1.2] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--sim-cyan)] ${POS}`}
     >
       {children}
     </button>
   );
 }
 
-/** The green NEXT→ that closes out steps 5 and 6. */
+/** The green NEXT→ that closes out a finished step. */
 function NextButton({
   x,
   y,
@@ -631,7 +825,7 @@ function NextButton({
       type="button"
       onClick={onClick}
       style={at(x, y)}
-      className={`font-outfit w-[74px] shrink-0 text-center text-[22px] leading-[28px] font-bold text-[#088B20] transition-transform duration-150 hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink ${POS}`}
+      className={`sim-next sim-enter h-[34px] w-[104px] shrink-0 text-center text-[18px] leading-[32px] font-bold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--sim-cyan)] ${POS}`}
     >
       NEXT&rarr;
     </button>
@@ -643,16 +837,25 @@ export default function Simulation() {
   const [placed, setPlaced] = useState<Placement>({});
   /** Action buttons already pressed. Steps 9 and 10 have two each. */
   const [fired, setFired] = useState<string[]>([]);
-  /** An action that is mid-run, so its equipment can judder while it works. */
+  /** An action that is mid-run, so its equipment can work while it runs. */
   const [busy, setBusy] = useState<string | null>(null);
   /** Step 7's growth dial, 0-100. */
   const [dial, setDial] = useState(0);
+  /** Where each prop was dropped, as a delta from its resting spot. Step 6
+   *  uses it so a group of cells stays on the patch of agar you chose. */
+  const [dropped, setDropped] = useState<Record<string, [number, number]>>({});
+  /** Step 2's cell, mid-burst. */
+  const [popping, setPopping] = useState(false);
   const [drag, setDrag] = useState<DragApi["drag"]>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [wrong, setWrong] = useState<string | null>(null);
   const [hot, setHot] = useState<string | null>(null);
 
   const zoneRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  /** Set the instant before a placement re-render; read by `useSettleInPlace`. */
+  const settling = useRef<Record<string, boolean>>({});
+  /** How far a prop was dragged when it was dropped, in design px. */
+  const dropDelta = useRef<Record<string, [number, number]>>({});
   const startRef = useRef({ x: 0, y: 0, moved: false });
   /* When a drag ends the browser still fires a click on the element it started
      from. Stamping the time and ignoring clicks for a beat afterwards is
@@ -662,11 +865,13 @@ export default function Simulation() {
   const dragEndedAt = useRef(0);
   const wrongTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
       if (wrongTimer.current) clearTimeout(wrongTimer.current);
       if (busyTimer.current) clearTimeout(busyTimer.current);
+      if (popTimer.current) clearTimeout(popTimer.current);
     },
     [],
   );
@@ -682,11 +887,16 @@ export default function Simulation() {
   function goTo(next: StepId) {
     if (wrongTimer.current) clearTimeout(wrongTimer.current);
     if (busyTimer.current) clearTimeout(busyTimer.current);
+    if (popTimer.current) clearTimeout(popTimer.current);
     zoneRefs.current = {};
+    settling.current = {};
+    dropDelta.current = {};
     setPlaced({});
+    setDropped({});
     setFired([]);
     setBusy(null);
     setDial(0);
+    setPopping(false);
     setWrong(null);
     setHot(null);
     setArmed(null);
@@ -696,7 +906,7 @@ export default function Simulation() {
 
   const didFire = (id: string) => fired.includes(id);
 
-  /** Press an action button. Equipment juts about for a beat, then settles. */
+  /** Press an action button. Equipment runs for a beat, then settles. */
   function runAction(id: string, ms = 1100) {
     if (busy || didFire(id)) return;
     setBusy(id);
@@ -705,6 +915,13 @@ export default function Simulation() {
       setBusy(null);
       setFired((f) => (f.includes(id) ? f : [...f, id]));
     }, ms);
+  }
+
+  /** Step 2: burst the cell open, then move on to rescuing the plasmid. */
+  function popTheCell() {
+    if (popping) return;
+    setPopping(true);
+    popTimer.current = setTimeout(() => goTo("rescue"), 620);
   }
 
   /** Which zone is `el` (or the pointer) sitting over, if any? */
@@ -764,9 +981,15 @@ export default function Simulation() {
         ? zoneUnder(e.currentTarget, e.clientX, e.clientY)
         : null;
       if (moved) dragEndedAt.current = Date.now();
+      const delta: [number, number] = drag ? [drag.dx, drag.dy] : [0, 0];
       setDrag(null);
       setHot(null);
-      if (target) resolve(id, target);
+      if (target) {
+        settling.current[id] = true;
+        dropDelta.current[id] = delta;
+        setDropped((d) => ({ ...d, [id]: delta }));
+        resolve(id, target);
+      }
     },
     cancel(_e, id) {
       if (drag?.id !== id) return;
@@ -778,12 +1001,14 @@ export default function Simulation() {
       if (Date.now() - dragEndedAt.current < 300) return;
       setArmed((a) => (a === id ? null : id));
     },
+    settling: settling.current,
   };
 
   /** Clicking a zone places whatever is currently armed. */
   const placeInto = (zone: string) => () => {
     if (!armed) return;
     const item = armed;
+    settling.current[item] = true;
     setArmed(null);
     resolve(item, zone);
   };
@@ -800,6 +1025,17 @@ export default function Simulation() {
     onClick: placeInto(id),
   });
 
+  /** Step 10's column walks through four states as the buttons are pressed. */
+  const columnPhase: ColumnPhase = didFire("collect")
+    ? "collected"
+    : didFire("wash")
+      ? "washed"
+      : placed.liquid
+        ? "loaded"
+        : "empty";
+
+  const stepIndex = STEP_ORDER.indexOf(stepId);
+
   return (
     <section
       id="simulate"
@@ -808,7 +1044,11 @@ export default function Simulation() {
       {/* ---- header: title, blurb, Vera and her line ---- */}
       <div className="relative text-center wide:h-[387px]">
         <h2 className="font-outfit inline-flex items-baseline justify-center gap-[14px] text-[clamp(1.55rem,4.6vw,3.125rem)] leading-[1.26] font-bold wide:absolute wide:inset-x-0 wide:top-0 wide:h-[63px] wide:gap-5 wide:text-[50px] wide:leading-[63px]">
-          {step.n && <span>{step.n}</span>}
+          {step.n && (
+            <span className="bg-[linear-gradient(135deg,#0F7A9E_0%,#0B8B45_100%)] bg-clip-text text-transparent">
+              {step.n}
+            </span>
+          )}
           <span>{step.title}</span>
         </h2>
 
@@ -820,27 +1060,31 @@ export default function Simulation() {
         </p>
 
         <div className="mt-8 flex items-center justify-center gap-1 sm:gap-2 wide:mt-0 wide:block">
+          <span
+            aria-hidden="true"
+            className="vera-glow hidden wide:block wide:top-[170px] wide:left-[150px] wide:size-[235px]"
+          />
           <Image
             src="/assets/vera-main.png"
             alt="Vera, the lab guide"
             width={368}
             height={368}
             priority
-            className="h-[76px] w-auto shrink-0 object-contain sm:h-[130px] wide:absolute wide:top-[157px] wide:left-[178px] wide:h-[179px] wide:w-[179px]"
+            className="h-[76px] w-auto shrink-0 object-contain drop-shadow-[0_10px_18px_rgba(6,24,34,0.28)] sm:h-[130px] wide:absolute wide:top-[157px] wide:left-[178px] wide:h-[179px] wide:w-[179px]"
           />
           <VeraBubble line={step.line} pillH={step.pillH} />
         </div>
       </div>
 
-      {/* ---- stage: the beige panel every prop lives on ---- */}
+      {/* ---- stage: the lit bench every prop stands on ---- */}
       <div
         style={{ "--stage-h": `${step.stageH}px` } as React.CSSProperties}
-        className="bg-story relative mt-8 flex flex-col items-center gap-8 px-4 py-9 wide:mt-0 wide:block wide:h-[var(--stage-h)] wide:p-0 wide:transition-[height] wide:duration-300 wide:ease-out"
+        className="sim-stage mt-8 flex flex-col items-center gap-8 px-4 py-9 wide:mt-0 wide:block wide:h-[var(--stage-h)] wide:p-0 wide:transition-[height] wide:duration-300 wide:ease-out"
       >
         {/* =============== 1. Pick a Bacteria Friend =============== */}
         {stepId === "pick" && (
           <>
-            <div className="flex flex-wrap items-end justify-center gap-x-10 gap-y-8 wide:block">
+            <div className="sim-enter flex flex-wrap items-end justify-center gap-x-10 gap-y-8 wide:block">
               <Draggable
                 id="ecoli"
                 label="E. coli"
@@ -890,12 +1134,14 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("table")}
               ariaLabel="Vera's table"
-              label={"Vera's\ntable"}
+              chip="Vera's table"
+              art={<BenchArt className="h-full w-full" />}
+              bare
+              open
               width={254}
               height={142}
               x={377}
               y={241}
-              className="whitespace-pre-line"
             />
           </>
         )}
@@ -905,9 +1151,17 @@ export default function Simulation() {
           <>
             <div
               style={at(438, 64)}
-              className={`relative h-[110px] w-[137.5px] shrink-0 ${POS}`}
+              className={`sim-enter relative h-[110px] w-[137.5px] shrink-0 ${POS}`}
             >
-              <EcoliArt className="absolute top-0 left-0 h-[78px] w-[137.5px]" />
+              <div className={popping ? "sim-burst" : ""}>
+                <EcoliArt className="absolute top-0 left-0 h-[78px] w-[137.5px]" />
+              </div>
+              {!popping && (
+                <span
+                  aria-hidden="true"
+                  className="sim-shock absolute top-[-14px] left-[-16px] block h-[106px] w-[170px] rounded-full border-2 border-[var(--sim-rose)]/50"
+                />
+              )}
               <Caption left={36.4} top={90} width={38}>
                 E.coli
               </Caption>
@@ -919,8 +1173,10 @@ export default function Simulation() {
               width={201}
               height={51}
               color="#F55F64"
+              edge="#8E1F23"
+              glow="rgba(245,95,100,0.7)"
               fontSize={25}
-              onClick={() => goTo("rescue")}
+              onClick={popTheCell}
             >
               POP it !!
             </ActionButton>
@@ -935,8 +1191,8 @@ export default function Simulation() {
               label="Plasmid — the DNA ring"
               width={105.2}
               height={138}
-              x={260}
-              y={75}
+              x={453.9}
+              y={24}
               api={api}
             >
               <PlasmidArt className="absolute top-0 left-0 h-[105px] w-[105.2px]" />
@@ -948,18 +1204,23 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("tube")}
               ariaLabel="Clean tube"
-              label="clean tube"
+              chip="clean tube"
+              art={
+                <TubeRackArt filled={occupied("tube")} className="h-full w-full" />
+              }
+              bare
+              open
               width={257}
               height={142}
-              x={641}
-              y={71}
+              x={378}
+              y={190}
             />
           </>
         )}
 
         {/* =============== 3. Cut the DNA =============== */}
         {stepId === "cut" && (
-          <div className="flex flex-col items-center gap-10 wide:block">
+          <div className="sim-enter flex flex-col items-center gap-10 wide:block">
             {/* row 1 — cut the ring open */}
             <div className="flex w-full items-center justify-center gap-5 sm:gap-10 wide:contents">
               <div
@@ -979,14 +1240,14 @@ export default function Simulation() {
                 {...zoneProps("site-1")}
                 ariaLabel="Cut site on the ring"
                 label={occupied("site-1") ? undefined : "site"}
-                labelTone="blue"
+                art={occupied("site-1") ? undefined : <SiteReticle />}
+                tiny
+                bare
                 width={60}
                 height={60}
                 x={CUT_SITES["site-1"][0]}
                 y={CUT_SITES["site-1"][1]}
                 shape="circle"
-                stroke={2}
-                tone="blue"
               />
 
               <ScissorsProp
@@ -1012,14 +1273,14 @@ export default function Simulation() {
                 {...zoneProps("site-2")}
                 ariaLabel="Cut site on the gene"
                 label={occupied("site-2") ? undefined : "site"}
-                labelTone="blue"
+                art={occupied("site-2") ? undefined : <SiteReticle />}
+                tiny
+                bare
                 width={60}
                 height={60}
                 x={CUT_SITES["site-2"][0]}
                 y={CUT_SITES["site-2"][1]}
                 shape="circle"
-                stroke={2}
-                tone="blue"
               />
 
               <ScissorsProp
@@ -1040,8 +1301,8 @@ export default function Simulation() {
                 label="New DNA ring"
                 width={105.2}
                 height={133}
-                x={215}
-                y={30}
+                x={453.9}
+                y={14}
                 api={api}
               >
                 <NewRingArt className="absolute top-0 left-0 h-[105px] w-[105.2px]" />
@@ -1054,27 +1315,38 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("emptycell")}
               ariaLabel="Empty cell"
-              label="Empty cell"
+              chip={placed.newring ? undefined : "Empty cell"}
+              art={
+                <HostCellArt
+                  open={busy === "shock" || didFire("shock")}
+                  className="h-full w-full"
+                />
+              }
+              bare
+              open={!placed.newring}
               width={258}
               height={80}
-              // Once the ring is absorbed the ring itself is gone, so the cell
-              // slides to the middle rather than sitting off to one side.
-              x={placed.newring ? 377.5 : 540}
-              y={42.5}
-              className="wide:transition-[left] wide:duration-300"
+              // The ring waits directly above, so the cell stays put on the
+              // centre line whether or not it has taken it yet. The ring's box
+              // ends at 147 including its caption, so this leaves a clear 53px
+              // between the two rather than letting their glows run together.
+              x={377.5}
+              y={200}
             >
               {placed.newring ? (
-                <NewRingArt className="h-[60px] w-[60px]" />
+                <NewRingArt className="h-[62px] w-[62px]" />
               ) : undefined}
             </DropZone>
 
-            {done && (
+            {done && !didFire("shock") && (
               <ActionButton
                 x={415.5}
-                y={175}
+                y={308}
                 width={182}
                 height={52}
                 color="#F85E5E"
+                edge="#8A1F1F"
+                glow="rgba(248,94,94,0.7)"
                 fontSize={16}
                 onClick={() => runAction("shock", 700)}
               >
@@ -1084,16 +1356,10 @@ export default function Simulation() {
 
             {didFire("shock") && (
               <>
-                <StageLabel
-                  x={291.5}
-                  y={244}
-                  width={336}
-                  color="#088B20"
-                  className="whitespace-normal"
-                >
+                <GoodNews x={338.5} y={380} width={336}>
                   It worked! The new DNA is safely inside the cell.
-                </StageLabel>
-                <NextButton x={647.5} y={240} onClick={() => goTo("winners")} />
+                </GoodNews>
+                <NextButton x={454.5} y={406} onClick={() => goTo("winners")} />
               </>
             )}
           </>
@@ -1105,20 +1371,38 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("dish")}
               ariaLabel="Selection dish"
+              art={
+                <>
+                  <DishArt className="h-full w-full" />
+                  {didFire("incubate") && <DishColonies />}
+                </>
+              }
+              bare
+              open={!done}
               width={200}
               height={200}
               x={406.5}
               y={8}
               shape="circle"
-              tone="blue"
-              className="relative"
-            >
-              {didFire("incubate") ? <DishColonies /> : undefined}
-            </DropZone>
+            />
 
             {(["group-with", "group-without"] as const).map((id) => {
               const seated = !!placed[id];
-              const [x, y] = seated ? BLOB_SLOT[id] : BLOB_REST[id];
+              // Dropped by pointer: keep it exactly where it was let go, only
+              // reined in far enough to stay wholly on the agar. Placed by
+              // click or keyboard, where there is no drop point to honour: the
+              // tidy half-and-half slots.
+              const [x, y] = seated
+                ? dropped[id]
+                  ? onAgar(
+                      BLOB_REST[id][0] + dropped[id][0],
+                      BLOB_REST[id][1] + dropped[id][1],
+                    )
+                  : BLOB_SLOT[id]
+                : BLOB_REST[id];
+              // The captions keep their hand-set slots under the dish. Letting
+              // them track a freely dropped group put the two long labels on
+              // top of each other the moment the groups sat close together.
               const [lx, ly] = seated ? LABEL_SLOT[id] : LABEL_REST[id];
               const withDna = id === "group-with";
               // After the incubation, only the group carrying the ring is left.
@@ -1160,13 +1444,17 @@ export default function Simulation() {
               );
             })}
 
-            {done && (
+            {done && !didFire("incubate") && (
               <ActionButton
+                // Only ever shown once both groups are on the agar, so the
+                // bench below them is clear by the time it appears.
                 x={392.5}
-                y={244}
+                y={250}
                 width={228}
                 height={64}
                 color="#4F78E0"
+                edge="#22397A"
+                glow="rgba(79,120,224,0.7)"
                 fontSize={16}
                 onClick={() => runAction("incubate", 900)}
               >
@@ -1176,16 +1464,10 @@ export default function Simulation() {
 
             {didFire("incubate") && (
               <>
-                <StageLabel
-                  x={361.5}
-                  y={316}
-                  width={290}
-                  color="#088B20"
-                  className="whitespace-normal"
-                >
+                <GoodNews x={361.5} y={334} width={290}>
                   Only the cells with our DNA ring survived.
-                </StageLabel>
-                <NextButton x={469.5} y={342} onClick={() => goTo("grow")} />
+                </GoodNews>
+                <NextButton x={454.5} y={360} onClick={() => goTo("grow")} />
               </>
             )}
           </>
@@ -1199,18 +1481,20 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("flask")}
               ariaLabel="Flask of food"
+              art={
+                <FlaskArt
+                  fill={placed.cell ? 0.12 + (dial / 100) * 0.78 : 0.1}
+                  cells={placed.cell ? 1 + Math.round((dial / 100) * 9) : 0}
+                  className="h-full w-full"
+                />
+              }
+              bare
+              open={!placed.cell}
               width={116}
               height={198}
               x={200}
               y={55}
-              edge="none"
-            >
-              <FlaskArt
-                fill={placed.cell ? 0.12 + (dial / 100) * 0.78 : 0}
-                cells={placed.cell ? 1 + Math.round((dial / 100) * 9) : 0}
-                className="h-[198px] w-[116px]"
-              />
-            </DropZone>
+            />
 
             {placed.cell ? (
               <StageLabel x={228} y={258} width={86}>
@@ -1226,7 +1510,7 @@ export default function Simulation() {
                 y={70}
                 api={api}
               >
-                <span className="absolute top-0 left-0 block size-[30px] rounded-full bg-[#FFAB03]" />
+                <CellDotArt className="absolute top-0 left-0 h-[30px] w-[30px]" />
                 <Caption left={30} top={5} width={86}>
                   Winning cell
                 </Caption>
@@ -1235,8 +1519,9 @@ export default function Simulation() {
 
             <div
               style={at(570, 175)}
-              className={`flex shrink-0 flex-col items-center ${POS}`}
+              className={`sim-dial-wrap relative flex shrink-0 flex-col items-center ${POS}`}
             >
+              <span aria-hidden="true" className="sim-dial-band" />
               <input
                 type="range"
                 min={0}
@@ -1245,7 +1530,7 @@ export default function Simulation() {
                 disabled={!placed.cell}
                 onChange={(e) => setDial(Number(e.target.value))}
                 aria-label="Growth dial"
-                className="sim-dial"
+                className="sim-dial relative"
               />
             </div>
             <StageLabel x={608} y={215} width={161} font="inter">
@@ -1254,16 +1539,10 @@ export default function Simulation() {
 
             {GROWN_ENOUGH(dial) && placed.cell && (
               <>
-                <StageLabel
-                  x={388}
-                  y={300}
-                  width={237}
-                  color="#088B20"
-                  font="inter"
-                >
+                <GoodNews x={388} y={300} width={237}>
                   Your batch of cells is ready to go.
-                </StageLabel>
-                <NextButton x={469.5} y={326} onClick={() => goTo("iptg")} />
+                </GoodNews>
+                <NextButton x={454.5} y={326} onClick={() => goTo("iptg")} />
               </>
             )}
             {placed.cell && dial > 90 && (
@@ -1271,7 +1550,7 @@ export default function Simulation() {
                 x={368}
                 y={300}
                 width={277}
-                color="#E49B09"
+                color="#FFC94A"
                 font="inter"
               >
                 That is a bit too much — ease the dial back.
@@ -1286,31 +1565,35 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("flask")}
               ariaLabel="Flask of cells"
+              art={
+                <FlaskArt
+                  fill={0.9}
+                  cells={placed.iptg ? 10 : 6}
+                  tint={placed.iptg ? "green" : "amber"}
+                  glow={!!placed.iptg}
+                  className="h-full w-full"
+                />
+              }
+              bare
+              open={!placed.iptg}
               width={116}
               height={198}
-              x={200}
-              y={55}
-              edge="none"
-            >
-              <FlaskArt
-                fill={0.9}
-                cells={placed.iptg ? 10 : 6}
-                className="h-[198px] w-[116px]"
-              />
-            </DropZone>
-            <StageLabel x={228} y={258} width={86}>
+              x={448.5}
+              y={16}
+            />
+            <StageLabel x={463.5} y={220} width={86}>
               Winning cell
             </StageLabel>
 
             {placed.iptg ? (
               <>
                 <div
-                  style={at(236.5, 60)}
-                  className={`relative h-[44px] w-[43px] shrink-0 ${POS}`}
+                  style={at(548, 20)}
+                  className={`sim-enter relative h-[64px] w-[32px] shrink-0 rotate-[38deg] ${POS}`}
                 >
-                  <IptgArt className="absolute top-0 left-0 h-[44px] w-[43px]" />
+                  <IptgArt className="absolute top-0 left-0 h-[64px] w-[32px]" />
                 </div>
-                <StageLabel x={222.5} y={106} width={71}>
+                <StageLabel x={536} y={92} width={56}>
                   IPTG
                 </StageLabel>
               </>
@@ -1320,8 +1603,8 @@ export default function Simulation() {
                 label="IPTG"
                 width={61}
                 height={154}
-                x={600}
-                y={70}
+                x={476}
+                y={268}
                 api={api}
               >
                 <IptgArt className="absolute top-0 left-0 h-[123px] w-[61px]" />
@@ -1333,10 +1616,10 @@ export default function Simulation() {
 
             {placed.iptg && (
               <>
-                <StageLabel x={306.5} y={300} width={400} color="#088B20">
+                <GoodNews x={306.5} y={280} width={400}>
                   Protein switch ON — the cells are hard at work!
-                </StageLabel>
-                <NextButton x={469.5} y={330} onClick={() => goTo("lyse")} />
+                </GoodNews>
+                <NextButton x={454.5} y={308} onClick={() => goTo("lyse")} />
               </>
             )}
           </>
@@ -1345,52 +1628,75 @@ export default function Simulation() {
         {/* =============== 9. Break Open the Cells =============== */}
         {stepId === "lyse" && (
           <>
-            <StageLabel x={306.5} y={10} width={53} color="#0995D1">
+            {/* Three stations on one line — flask, spinner, buffer — with an
+                even 150px between them and the row centred on the 1013px
+                column. The pellet the spin leaves behind lands in the middle
+                of the spinner-to-buffer gap, so the spacing reads evenly both
+                before the spin and after it. Each caption is centred over its
+                own station. */}
+            <StageLabel x={462} y={10} width={53} color="var(--sim-cyan)">
               spinner
             </StageLabel>
             <DropZone
               {...zoneProps("spinner")}
               ariaLabel="Spinner"
+              art={
+                <CentrifugeArt
+                  spinning={busy === "spin"}
+                  loaded={!!placed.flask}
+                  className="h-full w-full"
+                />
+              }
+              bare
+              open={!placed.flask}
               width={160}
               height={216}
-              x={280}
+              x={408.5}
               y={36}
-              stroke={2}
-              tone="sky"
               className={busy === "spin" ? "sim-working" : ""}
             />
 
-            <StageLabel x={690.5} y={30} width={44} color="#0995D1">
+            <StageLabel x={759} y={30} width={44} color="var(--sim-cyan)">
               buffer
             </StageLabel>
             <DropZone
               {...zoneProps("buffer")}
               ariaLabel="Buffer"
+              art={
+                <BufferWellArt
+                  active={busy === "shake" || didFire("shake")}
+                  className="h-full w-full"
+                />
+              }
+              bare
+              open={didFire("spin") && !placed.pellet}
               width={125}
               height={125}
-              x={650}
+              x={718.5}
               y={56}
               shape="circle"
-              stroke={2}
-              tone="sky"
               className={busy === "shake" ? "sim-working" : ""}
             />
 
-            {/* the flask of cells, until it has been spun down */}
-            {!didFire("spin") && (
+            {/* the flask of cells, until it goes into the machine — after that
+                it is inside with the lid down, and the loaded buckets say so */}
+            {!placed.flask && (
               <Draggable
                 id="flask"
                 label="Flask of cells"
                 width={89}
-                height={128}
-                x={placed.flask ? 313 : 80}
-                y={placed.flask ? 90 : 90}
+                height={150}
+                x={169.5}
+                y={90}
                 api={api}
-                settled={!!placed.flask}
-                className={busy === "spin" ? "sim-working" : ""}
               >
-                <span className="absolute top-0 left-[20px] block h-[108px] w-[49px] rounded-[20px] bg-[#0FB6FE]" />
-                <Caption left={0} top={108} width={89}>
+                <FlaskArt
+                  fill={0.9}
+                  cells={10}
+                  tint="green"
+                  className="absolute top-0 left-[7px] h-[128px] w-[75px]"
+                />
+                <Caption left={0} top={130} width={89}>
                   Flask of cells
                 </Caption>
               </Draggable>
@@ -1403,26 +1709,30 @@ export default function Simulation() {
                 label="Leftover cells"
                 width={94}
                 height={84}
-                x={placed.pellet ? 665.5 : 313}
-                y={placed.pellet ? 76 : 100}
+                x={placed.pellet ? 734 : 596.5}
+                y={placed.pellet ? 76 : 84}
                 api={api}
                 settled={!!placed.pellet}
                 className={busy === "shake" ? "sim-working" : ""}
               >
-                <span className="absolute top-0 left-[15.5px] block h-[64px] w-[63px] rounded-[50px] bg-[#4F78E0]" />
-                <Caption left={0} top={64} width={94}>
-                  Leftover cells
-                </Caption>
+                <PelletArt className="absolute top-0 left-0 h-[84px] w-[94px]" />
+                {!placed.pellet && (
+                  <Caption left={0} top={86} width={94}>
+                    Leftover cells
+                  </Caption>
+                )}
               </Draggable>
             )}
 
             {placed.flask && !didFire("spin") && (
               <ActionButton
-                x={310}
+                x={438.5}
                 y={268}
                 width={100}
                 height={64}
                 color="#4F78E0"
+                edge="#22397A"
+                glow="rgba(79,120,224,0.7)"
                 fontSize={16}
                 onClick={() => runAction("spin")}
               >
@@ -1430,13 +1740,15 @@ export default function Simulation() {
               </ActionButton>
             )}
 
-            {placed.pellet && (
+            {placed.pellet && !didFire("shake") && (
               <ActionButton
-                x={619}
+                x={687.5}
                 y={268}
                 width={187}
                 height={64}
                 color="#E49B09"
+                edge="#7A5200"
+                glow="rgba(228,155,9,0.7)"
                 fontSize={16}
                 onClick={() => runAction("shake")}
               >
@@ -1446,10 +1758,10 @@ export default function Simulation() {
 
             {didFire("shake") && (
               <>
-                <StageLabel x={388} y={350} width={237} color="#088B20">
+                <GoodNews x={388} y={350} width={237}>
                   The cells are open — protein is out.
-                </StageLabel>
-                <NextButton x={469.5} y={376} onClick={() => goTo("purify")} />
+                </GoodNews>
+                <NextButton x={454.5} y={376} onClick={() => goTo("purify")} />
               </>
             )}
           </>
@@ -1464,12 +1776,12 @@ export default function Simulation() {
                 label="Liquid with protein"
                 width={131}
                 height={86}
-                x={180}
-                y={100}
+                x={441}
+                y={300}
                 api={api}
               >
-                <span className="absolute top-0 left-[49.5px] block h-[66px] w-[32px] border-2 border-ink bg-[#FFAB03]" />
-                <Caption left={0} top={66} width={131}>
+                <LysateArt className="absolute top-0 left-0 h-[86px] w-[131px]" />
+                <Caption left={0} top={88} width={131}>
                   Liquid with protein
                 </Caption>
               </Draggable>
@@ -1478,31 +1790,28 @@ export default function Simulation() {
             <DropZone
               {...zoneProps("column")}
               ariaLabel="Purification column"
+              art={<ColumnArt phase={columnPhase} className="h-full w-full" />}
+              bare
+              open={!placed.liquid}
               width={96}
               height={224}
-              x={490}
-              y={60}
-              edge="solid"
+              x={458.5}
+              y={16}
               className={busy === "wash" ? "sim-working" : ""}
-            >
-              {placed.liquid ? (
-                <span
-                  className={`block w-[32px] border-2 border-ink transition-all duration-500 ${
-                    didFire("collect")
-                      ? "h-[24px] bg-[#FFAB03]"
-                      : "h-[66px] bg-[#FFAB03]"
-                  }`}
-                />
-              ) : undefined}
-            </DropZone>
+            />
+            <StageLabel x={446.5} y={246} width={120}>
+              column
+            </StageLabel>
 
             {placed.liquid && !didFire("wash") && (
               <ActionButton
-                x={700}
-                y={110}
+                x={456.5}
+                y={300}
                 width={100}
                 height={64}
                 color="#4F78E0"
+                edge="#22397A"
+                glow="rgba(79,120,224,0.7)"
                 fontSize={16}
                 onClick={() => runAction("wash")}
               >
@@ -1512,11 +1821,13 @@ export default function Simulation() {
 
             {didFire("wash") && !didFire("collect") && (
               <ActionButton
-                x={705}
-                y={110}
-                width={90}
-                height={35}
-                color="#088B20"
+                x={456.5}
+                y={300}
+                width={100}
+                height={48}
+                color="#0E9B3A"
+                edge="#065A21"
+                glow="rgba(14,155,58,0.7)"
                 fontSize={16}
                 onClick={() => runAction("collect", 700)}
               >
@@ -1525,25 +1836,56 @@ export default function Simulation() {
             )}
 
             {didFire("collect") && (
-              <StageLabel x={306.5} y={320} width={400} color="#088B20">
-                Pure protein, collected. That is the whole process.
-              </StageLabel>
+              <>
+                <div
+                  style={at(446.5, 286)}
+                  className={`sim-enter relative h-[104px] w-[120px] shrink-0 ${POS}`}
+                >
+                  <ProteinArt className="h-[104px] w-[120px]" />
+                </div>
+                <StageLabel x={446.5} y={396} width={120}>
+                  your protein
+                </StageLabel>
+                <GoodNews x={306.5} y={430} width={400}>
+                  Pure protein, collected. That is the whole process.
+                </GoodNews>
+              </>
             )}
           </>
         )}
       </div>
 
-      <p className="mt-4 h-[24px] text-right">
+      {/* ---- footer: where you are, and the way back to the start ---- */}
+      <div className="mt-5 flex min-h-[24px] items-center justify-between gap-4">
+        <div
+          className="sim-rail"
+          role="img"
+          aria-label={`Step ${stepIndex + 1} of ${STEP_ORDER.length}`}
+        >
+          {STEP_ORDER.map((id, i) => (
+            <span
+              key={id}
+              className={`sim-pip ${
+                i === stepIndex
+                  ? "sim-pip--now"
+                  : i < stepIndex
+                    ? "sim-pip--done"
+                    : ""
+              }`}
+            />
+          ))}
+        </div>
+
         {stepId !== "pick" && (
           <button
             type="button"
             onClick={() => goTo("pick")}
-            className="font-outfit text-[15px] underline underline-offset-4 opacity-60 transition-opacity hover:opacity-100"
+            className="font-outfit shrink-0 text-[15px] underline underline-offset-4 opacity-60 transition-opacity hover:opacity-100"
           >
             start over
           </button>
         )}
-      </p>
+      </div>
     </section>
   );
 }

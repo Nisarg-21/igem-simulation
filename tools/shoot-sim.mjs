@@ -72,7 +72,7 @@ const press = async (re, ms = 1300) => {
 /** Fast-forward to the head of a step without capturing the way there. */
 async function advanceTo(step) {
   await place(0, "table"); // E. coli
-  await press("POP it", 500);
+  await press("POP it", 900);
   if (step === "rescue") return;
   await place(0, "tube"); // plasmid -> cut
   if (step === "cut") return;
@@ -101,6 +101,15 @@ async function advanceTo(step) {
   await press("Shake it");
   await press("NEXT", 500); // -> purify
 }
+
+await load();
+await shot("sim-1-pick");
+await place(0, "table"); // -> pop
+await shot("sim-2-pop");
+await press("POP it", 900); // -> rescue
+await shot("sim-3-rescue");
+await place(0, "tube"); // -> cut
+await shot("sim-4-cut");
 
 await load();
 await advanceTo("cut");

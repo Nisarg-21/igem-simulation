@@ -25,10 +25,13 @@ const EXPECTED = {
     grabs: { "E. coli": [120, 58, 137.5, 110], Yeast: [458, 40, 80, 128], Virus: [759, 32, 133, 136] },
     zones: { table: [377, 241, 254, 142] },
   },
+  // Steps 2, 5, 6, 8 and 10 stack the prop over its target on the centre line
+  // rather than setting them side by side, which is what the design review
+  // asked for; the stage grows to suit.
   rescue: {
-    "@card": { stage: [0, 387, 1013, 307] },
-    grabs: { "@0": [260, 75, 105.2, 138] },
-    zones: { tube: [641, 71, 257, 142] },
+    "@card": { stage: [0, 387, 1013, 360] },
+    grabs: { "@0": [453.9, 24, 105.2, 138] },
+    zones: { tube: [378, 190, 257, 142] },
   },
   cut: {
     "@card": { stage: [0, 387, 1013, 383] },
@@ -36,13 +39,13 @@ const EXPECTED = {
     zones: { "site-1": [453, 85, 60, 60], "site-2": [453, 270, 60, 60] },
   },
   cell: {
-    "@card": { stage: [0, 387, 1013, 294] },
-    grabs: { "@0": [215, 30, 105.2, 133] },
-    zones: { emptycell: [540, 42.5, 258, 80] },
+    "@card": { stage: [0, 387, 1013, 460] },
+    grabs: { "@0": [453.9, 14, 105.2, 133] },
+    zones: { emptycell: [377.5, 200, 258, 80] },
   },
   winners: {
-    "@card": { stage: [0, 387, 1013, 383] },
-    grabs: { "@0": [152.5, 65.5, 85, 85], "@1": [775.5, 65.5, 85, 85] },
+    "@card": { stage: [0, 387, 1013, 460] },
+    grabs: { "@0": [464, 236, 85, 85], "@1": [464, 344, 85, 85] },
     zones: { dish: [406.5, 8, 200, 200] },
   },
   grow: {
@@ -51,19 +54,23 @@ const EXPECTED = {
     zones: { flask: [200, 55, 116, 198] },
   },
   iptg: {
-    "@card": { stage: [0, 387, 1013, 383] },
-    grabs: { "@0": [600, 70, 61, 154] },
-    zones: { flask: [200, 55, 116, 198] },
+    "@card": { stage: [0, 387, 1013, 470] },
+    grabs: { "@0": [476, 268, 61, 154] },
+    zones: { flask: [448.5, 16, 116, 198] },
   },
   lyse: {
     "@card": { stage: [0, 387, 1013, 420], pill: [344, 209, 490, 86] },
-    grabs: { "@0": [80, 90, 89, 128] },
-    zones: { spinner: [280, 36, 160, 216], buffer: [650, 56, 125, 125] },
+    // 150 tall, not 128: the drawing of the flask is 128 and its caption sits
+    // under it, where the old flat rectangle left room inside the box.
+    grabs: { "@0": [169.5, 90, 89, 150] },
+    // one row, even 150px gaps, centred: flask / spinner / buffer, with the
+    // pellet appearing in the middle of the spinner-to-buffer gap
+    zones: { spinner: [408.5, 36, 160, 216], buffer: [718.5, 56, 125, 125] },
   },
   purify: {
-    "@card": { stage: [0, 387, 1013, 383] },
-    grabs: { "@0": [180, 100, 131, 86] },
-    zones: { column: [490, 60, 96, 224] },
+    "@card": { stage: [0, 387, 1013, 470] },
+    grabs: { "@0": [441, 300, 131, 86] },
+    zones: { column: [458.5, 16, 96, 224] },
   },
 };
 
@@ -82,10 +89,9 @@ page.on("response", (r) => r.status() >= 400 && problems.push(`HTTP ${r.status()
 const HELPERS = () => {
   const w = window;
   w.__sec = () => document.querySelector("#simulate");
-  w.__stage = () =>
-    [...w.__sec().querySelectorAll("div")].find(
-      (d) => getComputedStyle(d).backgroundColor === "rgb(241, 238, 233)"
-    );
+  // The stage used to be found by its beige fill; it is a lit panel with a
+  // gradient now, so match the class the component actually puts on it.
+  w.__stage = () => w.__sec().querySelector(".sim-stage");
   w.__grabs = () => [...w.__sec().querySelectorAll("button")].filter((b) => b.className.includes("grabbable"));
   w.__zones = () => [...w.__sec().querySelectorAll("[data-zone]")];
   w.__acts = () =>
@@ -225,11 +231,11 @@ console.log(`\n--- wrong drop :: zone reads "${wrongText}"`);
 if (wrongText !== "error") problems.push(`wrong drop should read "error", read "${wrongText}"`);
 await new Promise((r) => setTimeout(r, 1900));
 const reverted = await page.evaluate(() => window.__sec().querySelector('[data-zone="table"]').innerText.replace(/\n/g, "/").trim());
-if (reverted !== "Vera's/table") problems.push(`error did not revert, reads "${reverted}"`);
+if (reverted !== "Vera's table") problems.push(`error did not revert, reads "${reverted}"`);
 console.log(`--- after revert :: zone reads "${reverted}"`);
 
 await step("drop E. coli", () => window.__drag(0, "table"));
-await step("press POP", () => window.__act("POP it").click());
+await step("press POP", () => window.__act("POP it").click(), 1000);
 checkGeometry("rescue", await measure());
 
 await step("drop plasmid", () => window.__drag(0, "tube"));
@@ -253,7 +259,7 @@ await step("press NEXT", () => window.__act("NEXT").click());
 checkGeometry("grow", await measure());
 
 // ---- step 7: the dial ----
-const cellsAt = () => page.evaluate(() => window.__sec().querySelectorAll('circle[fill="#FFAB03"]').length);
+const cellsAt = () => page.evaluate(() => window.__sec().querySelectorAll("[data-cell]").length);
 const cellsEmpty = await cellsAt();
 await step("cell -> flask", () => window.__drag(0, "flask"));
 const cellsSeeded = await cellsAt();
