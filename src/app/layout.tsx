@@ -24,7 +24,8 @@ const inika = Inika({
 
 const outfit = Outfit({
   subsets: ["latin"],
-  weight: ["500"],
+  // 400 and 700 are the walkthrough's body copy and step titles.
+  weight: ["400", "500", "700"],
   variable: "--f-outfit",
   display: "swap",
 });

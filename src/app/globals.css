@@ -18,6 +18,8 @@
   --color-band: #d9d9d9;
   --color-bubble: #d9d9d9;
   --color-story: #f1eee9;
+  /* Rejection state on the simulation's drop zones (Ellipse 18's red). */
+  --color-danger: #ef3b3b;
 }
 
 /* Font stacks are plain CSS rather than @theme entries: Tailwind tree-shakes
@@ -157,6 +159,112 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Simulation (Desktop - 3).
+
+   Vera's line on the walkthrough is a different bubble from the story frame's:
+   Rectangle 31 is a dark 490 x 64 pill, and its tail sits on the pill's left
+   flank rather than under it. The tail is drawn before the pill so the pill
+   paints over the base of the sliver.
+--------------------------------------------------------------------------- */
+/* Radius lives on the element as a utility, not here: rules in this file are
+   unlayered and would otherwise outrank Tailwind's layered `rounded-*`. */
+.vera-pill {
+  display: flex;
+  align-items: center;
+  background: #545050;
+  color: #f1eee9;
+}
+
+.vera-tail {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  width: 60px;
+  height: 16.6px;
+  transform: translateY(-50%);
+}
+
+@media (min-width: 72.5rem) {
+  .vera-tail {
+    left: -48px;
+    /* 23px down a 64px pill; scales when a longer line makes the pill taller. */
+    top: calc(var(--pill-h, 64px) * 0.36);
+    width: 96.37px;
+    height: 26.73px;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The growth dial (Line 248 + Ellipse 42): a 3px black track with a 30px
+   #EF3B3B knob. Built on a real range input so it stays keyboard-operable.
+--------------------------------------------------------------------------- */
+.sim-dial {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 237px;
+  height: 30px;
+  background: transparent;
+  cursor: grab;
+}
+.sim-dial:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.sim-dial::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--color-ink);
+}
+.sim-dial::-moz-range-track {
+  height: 3px;
+  background: var(--color-ink);
+}
+.sim-dial::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -13.5px;
+  border-radius: 50%;
+  background: #ef3b3b;
+}
+.sim-dial::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: #ef3b3b;
+}
+
+/* The spinner and the buffer judder while they are working. */
+@keyframes sim-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate3d(-3px, 1px, 0) rotate(-1.4deg);
+  }
+  50% {
+    transform: translate3d(3px, -1px, 0) rotate(1.4deg);
+  }
+  75% {
+    transform: translate3d(-2px, 2px, 0) rotate(-0.8deg);
+  }
+}
+.sim-working {
+  animation: sim-shake 0.26s linear infinite;
+}
+
+/* Draggable props. `touch-action: none` is what stops a touch-drag from
+   scrolling the page out from under the organism. */
+.grabbable {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

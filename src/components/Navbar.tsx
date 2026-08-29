@@ -22,7 +22,7 @@ export default function Navbar() {
         aria-label="Main"
       >
         {/* Logo lockup */}
-        <Link href="#" className="flex min-w-0 shrink-0 items-center gap-4 lg:pl-4">
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-4 lg:pl-4">
           <span className="block size-12 rounded-full bg-band lg:size-20" />
           <span className="leading-none">
             <span className="block text-[28px] font-bold tracking-tight lg:text-[48px]">
@@ -48,8 +48,9 @@ export default function Navbar() {
           ))}
         </ul>
 
+        {/* The one live destination in the bar: it opens the walkthrough. */}
         <Link
-          href="#build"
+          href="/simulate"
           className="sticker grid h-[52px] shrink-0 place-items-center rounded-[28px] px-6 text-[16px] transition-colors hover:bg-band sm:ml-auto lg:ml-0 lg:w-[286px] lg:px-0 lg:text-[20px]"
         >
           direct to the process
