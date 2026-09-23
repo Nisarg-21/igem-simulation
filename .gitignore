@@ -8,3 +8,5 @@ next-env.d.ts
 # Claude Code local config (vendored design skills, ~11MB)
 .claude/
 .mcp.json
+.vercel
+.env*

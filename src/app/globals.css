@@ -80,6 +80,51 @@ body {
   border-width: 1px;
 }
 
+/* Navbar links: sticker pills sitting on a hard offset shadow in one of the
+   logo's colours (set per link via --accent). Hover lifts the pill off its
+   shadow and washes it in the accent; press pushes it flat. */
+.nav-pill {
+  --accent: #0b57a4;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  border: 1.5px solid var(--color-ink);
+  border-radius: 999px;
+  background: var(--color-paper);
+  box-shadow: 4px 4px 0 var(--accent);
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+.nav-pill:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--color-paper));
+}
+.nav-pill:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--accent);
+}
+.nav-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.nav-pill-dot {
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 999px;
+  background: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-pill,
+  .nav-pill:hover,
+  .nav-pill:active {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Speech bubble. Written as plain CSS rather than arbitrary Tailwind values:
    the tail needs calc() offsets, and `top-[calc(100%-40px)]` compiles to
