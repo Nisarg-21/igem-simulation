@@ -82,9 +82,21 @@ body {
 
 /* Navbar links: sticker pills sitting on a hard offset shadow in one of the
    logo's colours (set per link via --accent). Hover lifts the pill off its
-   shadow and washes it in the accent; press pushes it flat. */
+   shadow and washes it in the accent; press pushes it flat.
+
+   Only the inner face moves. The <a> is the hit box and must stay put: if it
+   moved on :active, a press near its edge would slide it out from under the
+   cursor, mouseup would land elsewhere, and the browser would drop the click. */
 .nav-pill {
   --accent: #0b57a4;
+  display: inline-block;
+  border-radius: 999px;
+}
+.nav-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.nav-pill-face {
   display: inline-flex;
   align-items: center;
   gap: 0.5em;
@@ -97,18 +109,14 @@ body {
     box-shadow 150ms ease,
     background-color 150ms ease;
 }
-.nav-pill:hover {
+.nav-pill:hover .nav-pill-face {
   transform: translate(-2px, -2px);
   box-shadow: 6px 6px 0 var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, var(--color-paper));
 }
-.nav-pill:active {
+.nav-pill:active .nav-pill-face {
   transform: translate(4px, 4px);
   box-shadow: 0 0 0 var(--accent);
-}
-.nav-pill:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
 }
 .nav-pill-dot {
   width: 0.45em;
@@ -117,9 +125,9 @@ body {
   background: var(--accent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .nav-pill,
-  .nav-pill:hover,
-  .nav-pill:active {
+  .nav-pill-face,
+  .nav-pill:hover .nav-pill-face,
+  .nav-pill:active .nav-pill-face {
     transition: none;
     transform: none;
   }
